@@ -1,10 +1,12 @@
 // Sends back a photo that was uploaded for an item
+import { isAuthorized, unauthorizedResponse } from "@/lib/auth.mjs";
 import { queryDatabase } from "@/lib/database";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!isAuthorized(request.headers)) return unauthorizedResponse();
   const { id } = await params;
   const rows = await queryDatabase<{ image_data: Buffer; image_type: string }>(
     "SELECT image_data, image_type FROM items WHERE id = $1 AND image_data IS NOT NULL",

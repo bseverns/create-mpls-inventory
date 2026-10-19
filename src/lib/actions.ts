@@ -1,12 +1,18 @@
 "use server";
 // Every button that changes something calls one of these functions
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { isAuthorized } from "@/lib/auth.mjs";
 import { importCatalog } from "@/lib/catalog";
-import { prepareDatabase, queryDatabase } from "@/lib/database";
+import { prepareDatabase, queryDatabase, withTransaction } from "@/lib/database";
 import { searchLegoSets } from "@/lib/queries";
 import { STATUS_COLORS, makeSlug, parseDetails } from "@/lib/utils";
 
 type ActionResult = { error?: string };
+
+async function requireAuthorization() {
+  if (!isAuthorized(await headers())) throw new Error("Authentication required");
+}
 
 // Reads a text field from a form
 function getText(formData: FormData, fieldName: string) {
@@ -52,6 +58,7 @@ async function getChosenIds(formData: FormData) {
 // Items
 
 export async function addItem(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   if (name === "") return { error: "Name is required" };
   const { details, badLine } = parseDetails(getText(formData, "metadata"));
@@ -83,6 +90,7 @@ export async function addItem(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateItem(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const itemId = Number(formData.get("id"));
   const name = getText(formData, "name");
   if (name === "") return { error: "Name is required" };
@@ -132,6 +140,7 @@ export async function updateItem(formData: FormData): Promise<ActionResult> {
 
 // The plus and minus buttons on an item card
 export async function adjustQuantity(itemId: number, amount: number) {
+  await requireAuthorization();
   await queryDatabase(
     "UPDATE items SET quantity = GREATEST(1, quantity + $2) WHERE id = $1",
     [itemId, amount],
@@ -139,6 +148,7 @@ export async function adjustQuantity(itemId: number, amount: number) {
 }
 
 export async function deleteItem(formData: FormData) {
+  await requireAuthorization();
   await queryDatabase("DELETE FROM items WHERE id = $1", [
     Number(formData.get("id")),
   ]);
@@ -147,6 +157,7 @@ export async function deleteItem(formData: FormData) {
 
 // Moves some units of an item into a new item, which starts as a copy of the original
 export async function splitItem(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   if (name === "") return { error: "Name is required" };
 
@@ -187,11 +198,13 @@ export async function splitItem(formData: FormData): Promise<ActionResult> {
 
 // The Show more button
 export async function loadMoreLegoSets(searchText: string, offset: number) {
+  await requireAuthorization();
   return searchLegoSets(searchText, offset);
 }
 
 // Adds a LEGO set from the catalog to the inventory
 export async function addCatalogSet(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const { details, badLine } = parseDetails(getText(formData, "metadata"));
   if (badLine) return { error: getBadDetailsMessage(badLine) };
 
@@ -249,6 +262,7 @@ export async function refreshCatalog(): Promise<{
   importedCount?: number;
   error?: string;
 }> {
+  await requireAuthorization();
   try {
     const pool = await prepareDatabase();
     return { importedCount: await importCatalog(pool, true) };
@@ -274,6 +288,7 @@ async function saveIfNameIsFree(
 }
 
 export async function createOwner(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   if (name === "") return { error: "Enter a name" };
   return saveIfNameIsFree(
@@ -286,11 +301,13 @@ export async function createOwner(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateOwner(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   if (name === "") return { error: "Enter a name" };
   return saveIfNameIsFree(
     `UPDATE owners SET name = $2
-     WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM owners WHERE id <> $1 AND lower(name) = lower($2))
+     WHERE id = $1 AND lower(name) <> 'unassigned'
+       AND NOT EXISTS (SELECT 1 FROM owners WHERE id <> $1 AND lower(name) = lower($2))
      RETURNING id`,
     [Number(formData.get("id")), name],
     "owner",
@@ -298,23 +315,32 @@ export async function updateOwner(formData: FormData): Promise<ActionResult> {
 }
 
 // Deleting an owner moves all of their items to Unassigned
-export async function deleteOwner(formData: FormData) {
+export async function deleteOwner(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const ownerId = Number(formData.get("id"));
-  await queryDatabase(
-    `UPDATE items SET owner_id = (SELECT id FROM owners WHERE lower(name) = 'unassigned')
-     WHERE owner_id = $1`,
-    [ownerId],
-  );
-  await queryDatabase("DELETE FROM owners WHERE id = $1", [ownerId]);
-  await queryDatabase(
-    "SELECT setval(pg_get_serial_sequence('owners', 'id'), coalesce((SELECT max(id) FROM owners), 0) + 1, false)",
-  );
+  const deleted = await withTransaction(async (client) => {
+    const target = await client.query(
+      "SELECT id FROM owners WHERE id = $1 AND lower(name) <> 'unassigned' FOR UPDATE",
+      [ownerId],
+    );
+    if (target.rowCount === 0) return false;
+    await client.query(
+      `UPDATE items SET owner_id = (SELECT id FROM owners WHERE lower(name) = 'unassigned')
+       WHERE owner_id = $1`,
+      [ownerId],
+    );
+    await client.query("DELETE FROM owners WHERE id = $1", [ownerId]);
+    return true;
+  });
+  if (!deleted) return { error: "The built-in owner cannot be deleted" };
   refreshAllPages();
+  return {};
 }
 
 export async function createCategory(
   formData: FormData,
 ): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   const slug = makeSlug(name);
   if (slug === "") return { error: "Enter a name using letters or numbers" };
@@ -330,12 +356,13 @@ export async function createCategory(
 export async function updateCategory(
   formData: FormData,
 ): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   const slug = makeSlug(name);
   if (slug === "") return { error: "Enter a name using letters or numbers" };
   return saveIfNameIsFree(
     `UPDATE categories SET name = $2, slug = $3, description = $4
-     WHERE id = $1 AND NOT EXISTS (
+     WHERE id = $1 AND slug <> 'uncategorized' AND NOT EXISTS (
        SELECT 1 FROM categories WHERE id <> $1 AND (slug = $3 OR lower(name) = lower($2))
      )
      RETURNING id`,
@@ -345,15 +372,27 @@ export async function updateCategory(
 }
 
 // Deleting a category moves all of its items to Uncategorized
-export async function deleteCategory(formData: FormData) {
+export async function deleteCategory(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const categoryId = Number(formData.get("id"));
-  await queryDatabase(
-    `UPDATE items SET category_id = (SELECT id FROM categories WHERE slug = 'uncategorized')
-     WHERE category_id = $1`,
-    [categoryId],
-  );
-  await queryDatabase("DELETE FROM categories WHERE id = $1", [categoryId]);
+  const deleted = await withTransaction(async (client) => {
+    const target = await client.query(
+      "SELECT id FROM categories WHERE id = $1 AND slug <> 'uncategorized' FOR UPDATE",
+      [categoryId],
+    );
+    if (target.rowCount === 0) return false;
+    await client.query(
+      `UPDATE items SET category_id = (SELECT id FROM categories WHERE slug = 'uncategorized')
+       WHERE category_id = $1`,
+      [categoryId],
+    );
+    await client.query("DELETE FROM categories WHERE id = $1", [categoryId]);
+    return true;
+  });
+  if (!deleted)
+    return { error: "The built-in category cannot be deleted" };
   refreshAllPages();
+  return {};
 }
 
 function getColor(formData: FormData) {
@@ -362,6 +401,7 @@ function getColor(formData: FormData) {
 }
 
 export async function createStatus(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   const slug = makeSlug(name);
   if (slug === "") return { error: "Enter a name using letters or numbers" };
@@ -375,6 +415,7 @@ export async function createStatus(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateStatus(formData: FormData): Promise<ActionResult> {
+  await requireAuthorization();
   const name = getText(formData, "name");
   const slug = makeSlug(name);
   if (slug === "") return { error: "Enter a name using letters or numbers" };
@@ -391,6 +432,7 @@ export async function updateStatus(formData: FormData): Promise<ActionResult> {
 
 // Deleting a status gives its items no status
 export async function deleteStatus(formData: FormData) {
+  await requireAuthorization();
   await queryDatabase("DELETE FROM statuses WHERE id = $1", [
     Number(formData.get("id")),
   ]);

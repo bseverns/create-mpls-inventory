@@ -22,7 +22,7 @@ cd create-mpls-inventory
 cp .env.example .env
 ```
 
-Change `POSTGRES_PASSWORD` in `.env`, then build and start the containers:
+Change `POSTGRES_PASSWORD`, `INVENTORY_USERNAME`, and `INVENTORY_PASSWORD` in `.env`, then build and start the containers. The application refuses all requests when either inventory credential is missing.
 
 ```bash
 docker compose up --build -d

@@ -22,6 +22,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      INVENTORY_USERNAME: ${INVENTORY_USERNAME:?Set INVENTORY_USERNAME in .env}
+      INVENTORY_PASSWORD: ${INVENTORY_PASSWORD:?Set INVENTORY_PASSWORD in .env}
     ports:
       - "${APP_PORT:?Set APP_PORT in .env}:3000"
 

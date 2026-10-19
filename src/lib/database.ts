@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { importCatalogFromFilesIfEmpty } from "@/lib/catalog";
 
 const globalStore = globalThis as unknown as {
@@ -63,10 +63,14 @@ SELECT starter.* FROM (VALUES
   ('LEGO Sets', 'lego-sets', 'Complete sets and robotics kits'),
   ('LEGO Pieces', 'lego-pieces', 'Loose bricks, elements and parts'),
   ('Electronics & Tools', 'electronics-tools', 'Laptops, chargers, tools and supplies'),
-  ('Other', 'other', 'Everything else'),
-  ('Uncategorized', 'uncategorized', 'Items without a category')
+  ('Other', 'other', 'Everything else')
 ) AS starter(name, slug, description)
 WHERE NOT EXISTS (SELECT 1 FROM categories);
+
+-- Uncategorized is the built-in category for items without a category
+INSERT INTO categories (name, slug, description)
+SELECT 'Uncategorized', 'uncategorized', 'Items without a category'
+WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'uncategorized');
 
 INSERT INTO statuses (name, slug, color)
 SELECT starter.* FROM (VALUES
@@ -103,4 +107,22 @@ export async function queryDatabase<Row = Record<string, unknown>>(
   const readyPool = await prepareDatabase();
   const result = await readyPool.query(sql, values);
   return result.rows as Row[];
+}
+
+export async function withTransaction<Result>(
+  work: (client: PoolClient) => Promise<Result>,
+) {
+  const readyPool = await prepareDatabase();
+  const client = await readyPool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
