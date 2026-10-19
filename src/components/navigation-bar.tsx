@@ -1,0 +1,116 @@
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Boxes, Library, LayoutGrid, Settings2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const navigationLinks = [
+  { href: "/", label: "Overview", icon: LayoutGrid },
+  { href: "/inventory", label: "Inventory", icon: Boxes },
+  {
+    href: "/catalog",
+    label: "LEGO catalog",
+    shortLabel: "Catalog",
+    icon: Library,
+  },
+  { href: "/manage", label: "Manage", icon: Settings2 },
+];
+
+// Logo
+export function LogoMark() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 292 336"
+      className="size-8"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M249.94 60.5C247.11 64.12 234.89 69.66 230.39 72.22C228.51 73.29 225.38 76.2 223.17 76.08C220.25 75.92 209.02 67.99 205.67 66.18C190.76 58.1 176.33 49.21 161.55 40.91C158.52 39.2 149.09 32.6 146.47 32.08C144.49 31.69 140.96 34.77 139.27 35.77C134.05 38.88 128.71 41.94 123.45 44.95C100.36 58.19 77.37 71.52 54.31 84.83C47.97 88.49 41.66 92.14 35.3 95.82C33.65 96.78 28.78 98.35 28.16 100.29C27.3 102.95 28.06 107.03 28.06 109.83C28.06 117.06 28.06 124.28 28.06 131.5C28.06 155.28 28.06 179.06 28.06 202.83C28.06 210.94 28.06 219.06 28.06 227.17C28.06 229.36 27.14 234.29 28.38 236.11C29.34 237.52 32 238.28 33.45 239.09C38.11 241.71 42.73 244.51 47.38 247.14C64.16 256.64 80.67 266.57 97.45 276.04C109.11 282.62 120.78 289.38 132.29 296.2C134.72 297.64 143.97 304.09 146.16 303.95C148.25 303.82 151.04 301.12 152.91 300.12C158.22 297.29 163.32 294 168.55 291.05C183.29 282.71 197.87 274.11 212.64 265.8C218.7 262.39 230.47 254 236.5 252.31C238.06 256.18 236.87 269.89 236.87 274.83C236.87 277.08 237.55 280.7 236.65 282.76C235.9 284.47 232.88 285.37 231.38 286.21C226.16 289.17 220.99 292.3 215.78 295.27C198.49 305.14 181.53 315.73 163.97 325.15C159.78 327.4 155.71 330 151.58 332.34C149.85 333.31 147.63 335.42 145.56 335.19C142.57 334.85 136.41 329.91 133.47 328.31C124.07 323.2 114.92 317.51 105.63 312.21C90.57 303.62 75.7 294.75 60.62 286.21C52.26 281.48 43.33 277.15 35.32 271.84C29.25 267.81 22.39 264.9 16.3 260.86C11.53 257.7 6.13 254.19 0.9 251.83C0.9 195.94 0.9 140.06 0.9 84.17C6.13 81.81 11.53 78.3 16.3 75.14C22.39 71.1 29.25 68.19 35.32 64.16C43.33 58.85 52.26 54.52 60.62 49.79C75.7 41.25 90.57 32.38 105.63 23.79C114.92 18.49 124.07 12.8 133.47 7.69C136.41 6.09 142.57 1.15 145.56 0.81C148.07 0.53 151.33 3.57 153.4 4.77C159.71 8.43 166.02 12.21 172.43 15.75C189.93 25.38 206.75 36.37 224.41 45.76C230.3 48.9 235.97 52.42 241.76 55.75C244.28 57.2 247.89 58.45 249.94 60.5Z"
+        fill="#585958"
+        fillRule="evenodd"
+        stroke="#585958"
+        strokeWidth="0.25"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M283.1 79.17C285.77 80.83 288.45 82.5 291.12 84.17C291.12 140.06 291.12 195.94 291.12 251.83C288.45 253.5 285.77 255.17 283.1 256.83C276.72 260.26 270.33 263.68 263.95 267.11C263.95 216.74 263.95 166.37 263.95 116C261.85 117.05 259.76 118.11 257.67 119.17C255.81 120.39 253.96 121.61 252.1 122.83C243.43 127.83 234.77 132.83 226.1 137.83C212.96 145.28 199.81 152.72 186.67 160.17C176.14 166.39 165.62 172.61 155.1 178.83C152.37 179.92 148.71 183.37 145.82 183.31C143.13 183.26 139.49 179.86 136.9 178.83C126.38 172.61 115.86 166.39 105.33 160.17C92.19 152.72 79.04 145.28 65.9 137.83C62.54 135.88 59.19 133.93 55.83 131.97C55.52 126.59 55.21 121.21 54.9 115.83C59.66 113.19 64.41 110.55 69.17 107.9C74.14 110.66 79.12 113.41 84.1 116.17C85.96 117.39 87.81 118.61 89.67 119.83C108.28 130.55 126.89 141.28 145.5 152C164.44 141.28 183.39 130.55 202.33 119.83C204.19 118.61 206.04 117.39 207.9 116.17C229.71 103.72 251.52 91.28 273.33 78.83C277.37 75.82 279.02 77.56 283.1 79.17Z"
+        fill="#9bcde4"
+        fillRule="evenodd"
+        stroke="#9bcde4"
+        strokeWidth="0.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// The side menu on desktop and tablet, and the bottom tab bar on phones
+export function NavigationBar() {
+  const currentPath = usePathname();
+
+  function isCurrentPage(linkHref: string) {
+    if (linkHref === "/") return currentPath === "/";
+    return currentPath.startsWith(linkHref);
+  }
+
+  return (
+    <>
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r bg-card p-4 md:flex">
+        <Link
+          href="/"
+          className="mb-8 flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <LogoMark />
+          <span className="leading-tight">
+            <span className="block font-semibold">createMPLS</span>
+            <span className="block text-xs text-muted-foreground">
+              Inventory
+            </span>
+          </span>
+        </Link>
+        <nav className="flex flex-col gap-1">
+          {navigationLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={isCurrentPage(link.href) ? "page" : undefined}
+              className={cn(
+                "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                isCurrentPage(link.href)
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+            >
+              <link.icon className="size-4" />
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+      </aside>
+
+      <nav
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        aria-label="Main"
+      >
+        {navigationLinks.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            aria-current={isCurrentPage(link.href) ? "page" : undefined}
+            className={cn(
+              "flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium",
+              isCurrentPage(link.href)
+                ? "text-primary"
+                : "text-muted-foreground",
+            )}
+          >
+            <link.icon className="size-5" />
+            {link.shortLabel ?? link.label}
+          </Link>
+        ))}
+      </nav>
+    </>
+  );
+}

@@ -1,0 +1,28 @@
+# Packages
+node_modules/
+
+# Build output
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# LEGO catalog files
+data/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Computer and editor files
+.DS_Store
+__MACOSX/
+Thumbs.db
+.idea/
+.vscode/
+*.swp
