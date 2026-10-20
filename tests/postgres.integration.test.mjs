@@ -12,6 +12,39 @@ async function setupSql() {
   return match[1];
 }
 
+async function catalogImportSql() {
+  const source = await readFile(new URL("../src/lib/catalog.ts", import.meta.url), "utf8");
+  const match = source.match(
+    /await client\.query\(\s*`(WITH entries[\s\S]*?)`,\s*\[JSON\.stringify\(sets\)\]/,
+  );
+  assert.ok(match, "catalog.ts must contain the catalog import SQL");
+  return match[1];
+}
+
+async function importCatalog(pool, sets, onlyIfEmpty = false) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE lego_sets IN EXCLUSIVE MODE");
+    if (onlyIfEmpty) {
+      const result = await client.query(
+        "SELECT count(*)::int AS set_count FROM lego_sets",
+      );
+      if (result.rows[0].set_count !== 0) {
+        await client.query("COMMIT");
+        return;
+      }
+    }
+    await client.query(await catalogImportSql(), [JSON.stringify(sets)]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function resetDatabase(pool) {
   await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
   await pool.query(await setupSql());
@@ -204,5 +237,102 @@ test("PostgreSQL invariants", { skip: !databaseUrl }, async (t) => {
     await pool.query("DELETE FROM owners WHERE id = $1", [first.rows[0].id]);
     const second = await pool.query("INSERT INTO owners (name) VALUES ('Second owner') RETURNING id");
     assert.ok(second.rows[0].id > first.rows[0].id);
+  });
+
+  await t.test("rejects case-variant owner names", async () => {
+    await resetDatabase(pool);
+    const results = await Promise.allSettled([
+      pool.query("INSERT INTO owners (name) VALUES ('BOB')"),
+      pool.query("INSERT INTO owners (name) VALUES ('bob')"),
+    ]);
+    assert.equal(
+      results.filter((result) => result.status === "fulfilled").length,
+      1,
+    );
+    assert.equal(
+      results.filter((result) => result.status === "rejected").length,
+      1,
+    );
+  });
+
+  await t.test("consolidates existing case-variant owners before adding uniqueness", async () => {
+    await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+    await pool.query(`
+      CREATE TABLE owners (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+      CREATE TABLE items (id SERIAL PRIMARY KEY, owner_id INT NOT NULL REFERENCES owners(id));
+      INSERT INTO owners (name) VALUES ('Bob'), ('bob');
+      INSERT INTO items (owner_id) SELECT id FROM owners;
+    `);
+    await pool.query(await setupSql());
+
+    const owners = await pool.query("SELECT id, name FROM owners WHERE lower(name) = 'bob'");
+    const itemOwners = await pool.query("SELECT DISTINCT owner_id FROM items");
+    assert.equal(owners.rowCount, 1);
+    assert.deepEqual(itemOwners.rows, [{ owner_id: owners.rows[0].id }]);
+  });
+
+  await t.test("catalog refresh exactly mirrors its input", async () => {
+    await resetDatabase(pool);
+    await pool.query(
+      "INSERT INTO lego_sets (set_num, name) VALUES ('stale-1', 'Stale set')",
+    );
+    await pool.query(`
+      INSERT INTO items (category_id, owner_id, name, quantity, catalog_ref)
+      SELECT categories.id, owners.id, 'Kept inventory item', 3, 'stale-1'
+      FROM categories, owners
+      WHERE categories.slug = 'other' AND lower(owners.name) = 'unassigned'
+    `);
+    const sets = [["current-1", "Current set", "2025", "Test theme", "10", ""]];
+    await importCatalog(pool, sets);
+
+    const rows = await pool.query("SELECT set_num, name FROM lego_sets ORDER BY set_num");
+    const items = await pool.query(
+      "SELECT name, quantity, catalog_ref FROM items WHERE name = 'Kept inventory item'",
+    );
+    assert.deepEqual(rows.rows, [{ set_num: "current-1", name: "Current set" }]);
+    assert.deepEqual(items.rows, [
+      { name: "Kept inventory item", quantity: 3, catalog_ref: "stale-1" },
+    ]);
+  });
+
+  await t.test("concurrent catalog refreshes each leave an exact mirror", async () => {
+    await resetDatabase(pool);
+    const first = Array.from({ length: 5000 }, (_, index) => [
+      `old-${index}`,
+      `Old ${index}`,
+      "2024",
+      "Old",
+      "1",
+      "",
+    ]);
+    const second = [["current-1", "Current set", "2025", "Current", "2", ""]];
+    await Promise.all([importCatalog(pool, first), importCatalog(pool, second)]);
+    const rows = await pool.query("SELECT set_num FROM lego_sets ORDER BY set_num");
+    assert.ok(
+      rows.rows.length === first.length ||
+        (rows.rows.length === 1 && rows.rows[0].set_num === "current-1"),
+    );
+  });
+
+  await t.test("startup import does not overwrite a completed refresh", async () => {
+    await resetDatabase(pool);
+    const refresh = await pool.connect();
+    await refresh.query("BEGIN");
+    await refresh.query("LOCK TABLE lego_sets IN EXCLUSIVE MODE");
+
+    const startup = importCatalog(
+      pool,
+      [["bundled-1", "Bundled set", "2024", "Bundled", "1", ""]],
+      true,
+    );
+    await refresh.query(
+      "INSERT INTO lego_sets (set_num, name) VALUES ('current-1', 'Current set')",
+    );
+    await refresh.query("COMMIT");
+    refresh.release();
+    await startup;
+
+    const rows = await pool.query("SELECT set_num, name FROM lego_sets");
+    assert.deepEqual(rows.rows, [{ set_num: "current-1", name: "Current set" }]);
   });
 });

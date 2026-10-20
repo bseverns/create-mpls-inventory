@@ -12,6 +12,8 @@ const pool: Pool = globalStore.pool;
 
 // Runs when the website starts
 const SETUP_SQL = `
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS categories (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -56,6 +58,25 @@ CREATE TABLE IF NOT EXISTS lego_sets (
   img_url TEXT
 );
 
+-- Older databases allowed owner names that differed only by case. Keep the
+-- oldest owner and preserve every item's assignment before enforcing the rule.
+WITH owner_copies AS (
+  SELECT id, min(id) OVER (PARTITION BY lower(name)) AS canonical_id
+  FROM owners
+), moved_items AS (
+  UPDATE items
+  SET owner_id = owner_copies.canonical_id
+  FROM owner_copies
+  WHERE items.owner_id = owner_copies.id
+    AND owner_copies.id <> owner_copies.canonical_id
+)
+DELETE FROM owners
+USING owner_copies
+WHERE owners.id = owner_copies.id
+  AND owner_copies.id <> owner_copies.canonical_id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS owners_name_lower_key ON owners (lower(name));
+
 -- Starter rows, added only to a brand new database
 -- (WHERE NOT EXISTS is used instead of ON CONFLICT so no id numbers are skipped)
 INSERT INTO categories (name, slug, description)
@@ -86,14 +107,22 @@ WHERE NOT EXISTS (SELECT 1 FROM statuses);
 INSERT INTO owners (name)
 SELECT 'Unassigned'
 WHERE NOT EXISTS (SELECT 1 FROM owners WHERE lower(name) = 'unassigned');
+
+COMMIT;
 `;
 
 // Creates the tables the first time, and starts loading the LEGO catalog in the background
 export async function prepareDatabase() {
   if (!globalStore.setup) {
-    globalStore.setup = pool.query(SETUP_SQL).then(() => {
-      importCatalogFromFilesIfEmpty(pool);
-    });
+    globalStore.setup = pool
+      .query(SETUP_SQL)
+      .then(() => {
+        importCatalogFromFilesIfEmpty(pool);
+      })
+      .catch((error) => {
+        globalStore.setup = undefined;
+        throw error;
+      });
   }
   await globalStore.setup;
   return pool;

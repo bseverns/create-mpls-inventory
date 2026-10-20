@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   FolderPlus,
@@ -7,6 +7,7 @@ import {
   Tag,
   UserPlus,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,33 +30,36 @@ export function AddNewItemCategoryOwnerOrStatusMenu() {
 
   // The dropdown lists for the New item form
   const [formOptions, setFormOptions] = useState<FormOptions | null>(null);
+  const [isLoadingItem, setIsLoadingItem] = useState(false);
 
-  async function loadFormOptions() {
-    const response = await fetch("/api/form-options", { cache: "no-store" });
-    if (response.ok) setFormOptions(await response.json());
-  }
-
-  // Load the lists when the page opens and and again each time New item is chosen
-  useEffect(() => {
-    loadFormOptions();
-  }, []);
-
-  function openNewItemDialog() {
-    setOpenDialog("item");
-    loadFormOptions();
+  async function openNewItemDialog() {
+    setIsLoadingItem(true);
+    try {
+      const response = await fetch("/api/form-options", { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not load form options");
+      setFormOptions(await response.json());
+      setOpenDialog("item");
+    } catch {
+      toast.error("Could not open the new item form");
+    } finally {
+      setIsLoadingItem(false);
+    }
   }
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button>
-            Add
+          <Button disabled={isLoadingItem} aria-busy={isLoadingItem}>
+            {isLoadingItem ? "Loading item…" : "Add"}
             <ChevronDown className="-mr-1 opacity-70" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={openNewItemDialog}>
+          <DropdownMenuItem
+            disabled={isLoadingItem}
+            onSelect={() => void openNewItemDialog()}
+          >
             <PackagePlus />
             Item
           </DropdownMenuItem>

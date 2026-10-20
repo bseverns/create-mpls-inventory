@@ -1,8 +1,8 @@
 # Download the LEGO catalog, then build the website
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY scripts ./scripts
-RUN node scripts/fetch-catalog.mjs
+ADD https://cdn.rebrickable.com/media/downloads/sets.csv.gz /app/data/sets.csv.gz
+ADD https://cdn.rebrickable.com/media/downloads/themes.csv.gz /app/data/themes.csv.gz
 COPY package*.json ./
 RUN npm ci
 COPY . .

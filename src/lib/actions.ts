@@ -123,6 +123,11 @@ export async function updateItem(formData: FormData): Promise<ActionResult> {
       "UPDATE items SET image_url = NULL, image_data = $2, image_type = $3 WHERE id = $1",
       [itemId, Buffer.from(await photo.arrayBuffer()), photo.type],
     );
+  } else if (formData.get("remove_image") === "on") {
+    await queryDatabase(
+      "UPDATE items SET image_url = NULL, image_data = NULL, image_type = NULL WHERE id = $1",
+      [itemId],
+    );
   } else {
     await queryDatabase(
       `UPDATE items
@@ -280,7 +285,20 @@ async function saveIfNameIsFree(
   values: unknown[],
   kind: string,
 ): Promise<ActionResult> {
-  const rows = await queryDatabase(sql, values);
+  let rows;
+  try {
+    rows = await queryDatabase(sql, values);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "23505"
+    ) {
+      return { error: `A ${kind} with that name already exists` };
+    }
+    throw error;
+  }
   if (rows.length === 0)
     return { error: `A ${kind} with that name already exists` };
   refreshAllPages();

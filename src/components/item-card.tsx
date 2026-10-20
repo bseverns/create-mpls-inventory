@@ -68,7 +68,7 @@ export function ItemCard({
   }, [item.quantity]);
 
   async function changeQuantity(amount: 1 | -1) {
-    setQuantity(quantity + amount);
+    setQuantity((current) => current + amount);
     try {
       await adjustQuantity(item.id, amount);
     } catch {

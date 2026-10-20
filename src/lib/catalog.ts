@@ -37,7 +37,11 @@ async function readCsvFile(fileName: string, fromWebsite: boolean) {
 }
 
 // Saves every set in the lego_sets table, and returns how many there are
-export async function importCatalog(pool: Pool, fromWebsite: boolean) {
+export async function importCatalog(
+  pool: Pool,
+  fromWebsite: boolean,
+  onlyIfEmpty = false,
+) {
   const setRows = await readCsvFile("sets.csv.gz", fromWebsite);
   const themeRows = await readCsvFile("themes.csv.gz", fromWebsite);
 
@@ -64,28 +68,53 @@ export async function importCatalog(pool: Pool, fromWebsite: boolean) {
     row[5],
   ]);
 
-  await pool.query(
-    `INSERT INTO lego_sets (set_num, name, year, theme, num_parts, img_url)
-     SELECT entry->>0, entry->>1, nullif(nullif(entry->>2, ''), '0')::int, entry->>3,
-            nullif(nullif(entry->>4, ''), '0')::int, nullif(entry->>5, '')
-     FROM jsonb_array_elements($1::jsonb) AS entry
-     ON CONFLICT (set_num) DO UPDATE SET
-       name = EXCLUDED.name,
-       year = EXCLUDED.year,
-       theme = EXCLUDED.theme,
-       num_parts = EXCLUDED.num_parts,
-       img_url = EXCLUDED.img_url`,
-    [JSON.stringify(sets)],
-  );
+  if (sets.length === 0) throw new Error("Catalog contained no sets");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE lego_sets IN EXCLUSIVE MODE");
+    if (onlyIfEmpty) {
+      const result = await client.query(
+        "SELECT count(*)::int AS set_count FROM lego_sets",
+      );
+      if (result.rows[0].set_count !== 0) {
+        await client.query("COMMIT");
+        return 0;
+      }
+    }
+    await client.query(
+      `WITH entries AS MATERIALIZED (
+       SELECT entry FROM jsonb_array_elements($1::jsonb) AS entry
+     ), upserted AS (
+       INSERT INTO lego_sets (set_num, name, year, theme, num_parts, img_url)
+       SELECT entry->>0, entry->>1, nullif(nullif(entry->>2, ''), '0')::int, entry->>3,
+              nullif(nullif(entry->>4, ''), '0')::int, nullif(entry->>5, '')
+       FROM entries
+       ON CONFLICT (set_num) DO UPDATE SET
+         name = EXCLUDED.name,
+         year = EXCLUDED.year,
+         theme = EXCLUDED.theme,
+         num_parts = EXCLUDED.num_parts,
+         img_url = EXCLUDED.img_url
+     )
+     DELETE FROM lego_sets
+     WHERE set_num NOT IN (SELECT entry->>0 FROM entries)`,
+      [JSON.stringify(sets)],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   return sets.length;
 }
 
 export async function importCatalogFromFilesIfEmpty(pool: Pool) {
   try {
-    const result = await pool.query(
-      "SELECT count(*)::int AS set_count FROM lego_sets",
-    );
-    if (result.rows[0].set_count === 0) await importCatalog(pool, false);
+    await importCatalog(pool, false, true);
   } catch (error) {
     console.warn("Could not load the LEGO catalog from the data folder", error);
   }

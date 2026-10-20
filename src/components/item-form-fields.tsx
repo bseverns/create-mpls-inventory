@@ -141,6 +141,12 @@ export function ItemFormFields({
           />
         </Field>
       </TwoFields>
+      {item?.image_source && (
+        <label className="flex items-center gap-2 text-sm">
+          <input name="remove_image" type="checkbox" />
+          Remove existing photo
+        </label>
+      )}
       <Field label="Details" hint="One “label: value” per line.">
         <Textarea
           name="metadata"
