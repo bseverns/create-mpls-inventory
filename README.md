@@ -17,7 +17,7 @@ Ensure [Docker](https://www.docker.com/products/docker-desktop/) is installed.
 Clone the repository and configure the environment file:
 
 ```bash
-git clone https://github.com/aidan-labs/create-mpls-inventory.git
+git clone https://github.com/bseverns/create-mpls-inventory.git
 cd create-mpls-inventory
 cp .env.example .env
 ```
