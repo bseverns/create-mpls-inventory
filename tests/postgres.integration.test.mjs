@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
+import { assertSafePostgresTestTarget } from "./postgres-test-target.mjs";
 
 const databaseUrl = process.env.POSTGRES_TEST_URL;
+const resetConfirmation = process.env.POSTGRES_TEST_CONFIRM_RESET;
 
 async function setupSql() {
   const source = await readFile(new URL("../src/lib/database.ts", import.meta.url), "utf8");
@@ -101,6 +103,7 @@ async function deleteCategory(client, categoryId) {
 }
 
 test("PostgreSQL invariants", { skip: !databaseUrl }, async (t) => {
+  assertSafePostgresTestTarget(databaseUrl, resetConfirmation);
   const pool = new pg.Pool({ connectionString: databaseUrl });
   t.after(() => pool.end());
 
