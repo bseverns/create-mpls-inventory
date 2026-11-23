@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --test tests/actions-guards.test.mjs tests/auth.test.mjs tests/reliability-guards.test.mjs tests/postgres-integration-safety.test.mjs",
     "catalog:fetch": "node scripts/fetch-catalog.mjs"
   },
   "overrides": {
